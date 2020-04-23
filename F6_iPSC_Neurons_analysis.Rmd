@@ -1,0 +1,197 @@
+---
+title: "R Notebook: EdgeR analysis of NGN2 induced neuronal differentiation"
+output: html_notebook
+editor_options: 
+  chunk_output_type: console
+---
+
+Load Libraries
+```{r}
+library(dplyr) 
+library(magrittr)
+library(edgeR)
+library(knitr)
+```
+
+
+Upload Data and meta data
+```{r}
+
+# Ensenble gene ID + FANTOM CAT ID is used
+data = read.table("expression.count.gene.nAnT-iCAGE.None.human_dopaminergic_neurons_from_iPS.tsv", header=TRUE, row.names=1)
+
+meta = read.csv("LSID3099_META.csv")
+colnames(data)[match(colnames(data), meta$library_name)] = as.character(meta$perturb_id)
+
+# Create groups based on header names
+s = strsplit(names(data), split="\\.")
+group<-sapply(1:length(s), function(X)  s[[X]][1])
+
+```
+
+Run EdgeR
+```{r}
+
+# Standard EdgeR commands for normalization and filtering
+my_data = DGEList(counts=data, group=group)
+keep = rowSums(cpm(my_data)) >= 3
+
+my_data = my_data[keep, ]
+my_data = calcNormFactors(my_data)
+
+# Create design matrix
+design = model.matrix(~0+group)
+rownames(design) = colnames(my_data)
+colnames(design) = unique(group)
+
+design # based on replicates
+
+# Fit GLM
+y <- estimateDisp(my_data, design)
+fit <- glmFit(y, design)
+
+# Make comparisons
+con <- makeContrasts(Day08 = iN_08d - iN_00d, Day03 = iN_03d - iN_00d, levels=design)
+
+lrt <- glmLRT(fit, contrast = con)
+
+# Show top DEG and summarize
+topTags(lrt)
+summary(decideTests(lrt))
+
+
+```
+
+Retrieve significantly differentially expressed genes
+```{r}
+
+# Rename
+de.table = lrt$table
+
+# Perform mulitple testing 
+FDR <- p.adjust(de.table$PValue, method="BH") 
+de.table$FDR = FDR
+de.table$Symbol = rownames(de.table)
+
+# Filter rows (genes) based on a defined criteria
+hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
+                                      (logFC.Day03 > 1 | logFC.Day03 < (-1)), 
+                                      FDR < 0.01) %>% 
+                                      dplyr::select(Symbol, logFC.Day03, logFC.Day08, FDR)
+
+
+```
+
+Perform Gene Ontology anlaysis
+```{r}
+
+library(topGO)
+
+# Define background for GO (also try with hm.table$Symbol) 
+universe = de.table$Symbol
+
+# Identify sigGenes for day 3
+sigGenes.03 = de.table %>% dplyr::filter((logFC.Day03 > 1 | logFC.Day03 < (-1)), 
+                                         FDR < 0.01) %>% 
+                                      dplyr::select(Symbol) %>% .[,1]
+
+# Identify sigGenes for day 8
+sigGenes.08 = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)), 
+                                         FDR < 0.01) %>% 
+                                      dplyr::select(Symbol) %>% .[,1]
+
+# Convert format to factor
+gene_universe.03 = factor(as.numeric(universe %in% sigGenes.03))   
+gene_universe.08 = factor(as.numeric(universe %in% sigGenes.08))   
+names(gene_universe.03) = universe
+names(gene_universe.08) = universe
+
+# Run Top GO for day 3
+go_data <- new("topGOdata",
+               ontology = "BP",  
+               allGenes = gene_universe.03,   
+               nodeSize = 5,  
+               annot = annFUN.org,  
+               mapping = "org.Hs.eg.db", 
+               ID = "ensembl")  
+
+# Statistics 
+go_test <- runTest(go_data, algorithm = "classic", statistic = "fisher")
+
+# Extract GO terms and create table
+go_table <- GenTable(go_data, weightFisher = go_test,
+                     orderBy = "weightFisher", ranksOf = "weightFisher",
+                     topNodes = sum(score(go_test) < .01), numChar = 50 )
+
+
+# Run Top GO for day 8
+go_data2 <- new("topGOdata",
+               ontology = "BP",  
+               allGenes = gene_universe.08,   
+               nodeSize = 5,  
+               annot = annFUN.org,  
+               mapping = "org.Hs.eg.db", 
+               ID = "ensembl")  
+
+# Statistics 
+go_test2 <- runTest(go_data2, algorithm = "classic", statistic = "fisher")
+
+# Extract GO terms and create table
+go_table2 <- GenTable(go_data2, weightFisher = go_test2,
+                     orderBy = "weightFisher", ranksOf = "weightFisher",
+                     topNodes = sum(score(go_test2) < .01), numChar = 50 )
+
+
+# Merge Day 3 and Day 8 GO tables
+go_table_all = merge(go_table, go_table2, by = "GO.ID")
+
+# Change "< 1e-30" character string into a numeric value
+go_table_all$weightFisher.x = as.numeric(gsub("< 1e-30", 1e-30, go_table_all$weightFisher.x))
+go_table_all$weightFisher.y = as.numeric(gsub("< 1e-30", 1e-30, go_table_all$weightFisher.y))
+
+```
+
+
+Plot and visualize Significant GO terms
+```{r}
+
+# Convert p-values to -log10. 
+# .x = day 3
+# .y = day 8
+go_table_all$weightFisher.x = go_table_all$weightFisher.x %>% as.numeric %>% -log10(.)
+go_table_all$weightFisher.y = go_table_all$weightFisher.y %>% as.numeric %>% -log10(.)
+
+# Sort the table based on the GO ID significance on day 8
+go_table_all$GO.ID = factor(go_table_all$GO.ID, 
+                      levels = dplyr::arrange(go_table_all, desc(weightFisher.y))$GO.ID )
+
+# Keep only the relevant columns and make GO term unique
+m = dplyr::select(go_table_all, GO.ID, Term.x, weightFisher.x, weightFisher.y)
+m$Term.x = make.unique(m$Term.x)
+
+library(reshape2)
+# Rearrange the table for GGplot
+mx = melt(m)
+
+# Rename columns
+mx$variable = gsub("weightFisher.x", "Day03", mx$variable)
+mx$variable = gsub("weightFisher.y", "Day08", mx$variable)
+
+# Reorder the terms based on P-value
+mx$Term.x = factor(mx$Term.x, levels = as.factor(m$Term.x[order(m$weightFisher.y, decreasing = TRUE)]) )
+
+# Extract terms that contain "Neuro"
+keep = grep("neuro", mx$Term.x, ignore.case = TRUE)
+mx.neuro = mx[keep,]
+
+library(ggplot2)
+# Plot GO terms
+ggplot(mx.neuro, aes(x=Term.x, y=value, fill = variable)) + geom_bar(stat = "identity", position = "dodge") +
+          theme_classic(base_size = 10) +  
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+          xlab("") + ylab("-log10(p-value)") 
+
+
+
+```
+
