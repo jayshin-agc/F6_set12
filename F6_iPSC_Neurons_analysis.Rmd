@@ -23,6 +23,8 @@ data = read.table("F6_set12_count.tsv", header=TRUE, row.names=1)
 meta = read.csv("F6_set12_meta.csv")
 colnames(data)[match(colnames(data), meta$library_name)] = as.character(meta$perturb_id)
 
+annotations = read.table("ENSG_Annotation.txt", header=TRUE)
+
 # Create groups based on header names
 s = strsplit(names(data), split="\\.")
 group<-sapply(1:length(s), function(X)  s[[X]][1])
