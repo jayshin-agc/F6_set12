@@ -1,23 +1,25 @@
 ---
-title: "R Notebook: EdgeR analysis of NGN2 induced neuronal differentiation"
-output: html_notebook
-editor_options: 
-  chunk_output_type: console
+title: "F6_Set12 EdgeR analysis"
+output: html_document
 ---
 
-Load Libraries
-```{r}
+### Last modified Apr 27, 2020. Author JWS
+This analysis is in part to quickly visualize and assess the dataset. 
+
+### Load Libraries
+```{r message=FALSE, warning=FALSE}
+
 library(dplyr) 
 library(magrittr)
 library(edgeR)
-library(knitr)
 library(reshape2)
 library(ggplot2)
+library(knitr)
 
 ```
 
 
-Upload Data and meta data
+### Upload Data and meta data (library information and geneID/geneName)
 ```{r}
 
 # Ensenble gene ID + FANTOM CAT ID is used
@@ -26,16 +28,17 @@ data = read.table("data/F6_set12_count.tsv", header=TRUE, row.names=1)
 meta = read.csv("meta/F6_set12_meta.csv")
 colnames(data)[match(colnames(data), meta$library_name)] = as.character(meta$perturb_id)
 
-annotations = read.table("meta/ENSG_Annotation.txt", header=TRUE)
+annotations = read.csv("meta/GeneID_to_GeneName.csv", header=TRUE)
+
+
+```
+
+### Run EdgeR
+```{r}
 
 # Create groups based on header names
 s = strsplit(names(data), split="\\.")
 group<-sapply(1:length(s), function(X)  s[[X]][1])
-
-```
-
-Run EdgeR
-```{r}
 
 # Standard EdgeR commands for normalization and filtering
 my_data = DGEList(counts=data, group=group)
@@ -61,13 +64,13 @@ con <- makeContrasts(Day08 = iN_08d - iN_00d, Day03 = iN_03d - iN_00d, levels=de
 lrt <- glmLRT(fit, contrast = con)
 
 # Show top DEG and summarize
-topTags(lrt)
+#topTags(lrt)
 summary(decideTests(lrt))
 
 
 ```
 
-Retrieve significantly differentially expressed genes
+### Retrieve significantly differentially expressed genes
 ```{r}
 
 # Rename
@@ -76,55 +79,53 @@ de.table = lrt$table
 # Perform mulitple testing 
 FDR <- p.adjust(de.table$PValue, method="BH") 
 de.table$FDR = FDR
-de.table$GeneID = rownames(de.table)
+de.table$geneID = rownames(de.table)
 
-de.table = merge(de.table, annotations, by = "GeneID")
+de.table = merge(de.table, annotations, by = "geneID")
 
 # Filter rows (genes) based on a defined criteria
 hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
                                       (logFC.Day03 > 1 | logFC.Day03 < (-1)), 
-                                      FDR < 0.01) %>% 
+                                      FDR < 0.05) %>% 
                                       dplyr::mutate(., logFC.Day00 = 0) %>%
-                                      dplyr::select(GeneID, Symbol, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
+                                      dplyr::select(geneID, geneName, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
 
-
+dim(hm.table)
 
 ```
 
-Search GOI and Visualize
-```{r}
-
+### Search for gene of interest and Visualize
+```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
 # goi = gene of interest
 goi = c("MAP2", "HES2") # Add gene symbols here
 
-melt.table = dplyr::filter(hm.table, Symbol %in% goi) %>% dplyr::select(-FDR) %>% melt()
+melt.table = dplyr::filter(hm.table, geneName %in% goi) %>% dplyr::select(-FDR) %>% melt()
 
-ggplot(melt.table, aes(x=variable, y=as.numeric(value), color=Symbol)) +
-                        geom_line()
-                        geom_line(aes(group=factor(Symbol))) + 
-                        geom_point(aes(group=factor(Symbol))) + 
+ggplot(melt.table, aes(x=variable, y=as.numeric(value), color=factor(geneName))) +
+                        geom_line(aes(group=factor(geneName))) + 
+                        geom_point(aes(group=factor(geneName))) + 
                         ylab("Log2 Ratio") + xlab ("Time") + theme_light(base_size = 20)
 
 ```
 
 
-Perform Gene Ontology anlaysis
-```{r}
+### Perform Gene Ontology anlaysis
+```{r message=FALSE, warning=FALSE, cache=TRUE}
 
 library(topGO)
 
 # Define background for GO (also try with hm.table$Symbol) 
-universe = de.table$Symbol
+universe = de.table$geneID
 
 # Identify sigGenes for day 3
 sigGenes.03 = de.table %>% dplyr::filter((logFC.Day03 > 1 | logFC.Day03 < (-1)), 
-                                         FDR < 0.01) %>% 
-                                      dplyr::select(Symbol) %>% .[,1]
+                                         FDR < 0.05) %>% 
+                                      dplyr::select(geneID) %>% .[,1]
 
 # Identify sigGenes for day 8
 sigGenes.08 = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)), 
-                                         FDR < 0.01) %>% 
-                                      dplyr::select(Symbol) %>% .[,1]
+                                         FDR < 0.05) %>% 
+                                      dplyr::select(geneID) %>% .[,1]
 
 # Convert format to factor
 gene_universe.03 = factor(as.numeric(universe %in% sigGenes.03))   
@@ -178,8 +179,8 @@ go_table_all$weightFisher.y = as.numeric(gsub("< 1e-30", 1e-30, go_table_all$wei
 ```
 
 
-Plot and visualize Significant GO terms
-```{r}
+### Plot and visualize Significant GO terms
+```{r message=FALSE, warning=FALSE, figure.width=30, fig.height = 7}
 
 # Convert p-values to -log10. 
 # .x = day 3
@@ -209,13 +210,11 @@ mx$Term.x = factor(mx$Term.x, levels = as.factor(m$Term.x[order(m$weightFisher.y
 keep = grep("neuro", mx$Term.x, ignore.case = TRUE)
 mx.neuro = mx[keep,]
 
-library(ggplot2)
 # Plot GO terms
 ggplot(mx.neuro, aes(x=Term.x, y=value, fill = variable)) + geom_bar(stat = "identity", position = "dodge") +
-          theme_classic(base_size = 10) +  
+          theme_light(base_size = 13) +  
           theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
           xlab("") + ylab("-log10(p-value)") 
-
 
 
 ```
