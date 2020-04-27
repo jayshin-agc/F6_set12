@@ -79,8 +79,10 @@ de.table$GeneID = rownames(de.table)
 hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
                                       (logFC.Day03 > 1 | logFC.Day03 < (-1)), 
                                       FDR < 0.01) %>% 
-                                      dplyr::select(Symbol, logFC.Day03, logFC.Day08, FDR)
+                                      dplyr::select(GeneID, logFC.Day03, logFC.Day08, FDR)
 
+
+hm.table2 = merge(hm.table, annotations, by = "GeneID")
 
 ```
 
