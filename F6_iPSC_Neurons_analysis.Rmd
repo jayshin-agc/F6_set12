@@ -75,14 +75,16 @@ FDR <- p.adjust(de.table$PValue, method="BH")
 de.table$FDR = FDR
 de.table$GeneID = rownames(de.table)
 
+de.table = merge(de.table, annotations, by = "GeneID")
+
 # Filter rows (genes) based on a defined criteria
 hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
                                       (logFC.Day03 > 1 | logFC.Day03 < (-1)), 
                                       FDR < 0.01) %>% 
-                                      dplyr::select(GeneID, logFC.Day03, logFC.Day08, FDR)
+                                      dplyr::mutate(., logFC.Day00 = 0) %>%
+                                      dplyr::select(GeneID, Symbol, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
 
 
-hm.table2 = merge(hm.table, annotations, by = "GeneID")
 
 ```
 
