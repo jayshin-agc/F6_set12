@@ -1,3 +1,9 @@
 # F6_set12
-Fantom6 Set12 samples from Peter Heutink's lab. IPS cells overexpressed with NGN2 gene to induce cortical neuron differentiation. CAGE profile across time points (Day 0, 3, and 8).
-https://htmlpreview.github.io/?https://github.com/jayshin-agc/F6_set12/blob/master/index.html
+Fantom6 Set12 samples. iPSC to Neuron time course differentiation. CAGE profile across time points (0, 3, 8 days).
+The data is private at this moment. 
+
+## MAP2 and HES2 gene expression over time
+![control genes](https://github.com/jayshin-agc/F6_set12/blob/master/figure-html/unnamed-chunk-5-1.png)
+
+## GO output related to neurons
+![GO_output](https://github.com/jayshin-agc/F6_set12/blob/master/figure-html/unnamed-chunk-7-1.png)
