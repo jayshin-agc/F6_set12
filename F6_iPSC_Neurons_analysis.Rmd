@@ -18,10 +18,12 @@ Upload Data and meta data
 ```{r}
 
 # Ensenble gene ID + FANTOM CAT ID is used
-data = read.table("expression.count.gene.nAnT-iCAGE.None.human_dopaminergic_neurons_from_iPS.tsv", header=TRUE, row.names=1)
+data = read.table("F6_set12_count.tsv", header=TRUE, row.names=1)
 
-meta = read.csv("LSID3099_META.csv")
+meta = read.csv("F6_set12_meta.csv")
 colnames(data)[match(colnames(data), meta$library_name)] = as.character(meta$perturb_id)
+
+annotations = read.table("ENSG_Annotation.txt", header=TRUE)
 
 # Create groups based on header names
 s = strsplit(names(data), split="\\.")
