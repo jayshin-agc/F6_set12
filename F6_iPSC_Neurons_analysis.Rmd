@@ -73,7 +73,7 @@ de.table = lrt$table
 # Perform mulitple testing 
 FDR <- p.adjust(de.table$PValue, method="BH") 
 de.table$FDR = FDR
-de.table$Symbol = rownames(de.table)
+de.table$GeneID = rownames(de.table)
 
 # Filter rows (genes) based on a defined criteria
 hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
@@ -83,6 +83,7 @@ hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) |
 
 
 ```
+
 
 Perform Gene Ontology anlaysis
 ```{r}
