@@ -11,6 +11,9 @@ library(dplyr)
 library(magrittr)
 library(edgeR)
 library(knitr)
+library(reshape2)
+library(ggplot2)
+
 ```
 
 
@@ -85,6 +88,22 @@ hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) |
                                       dplyr::select(GeneID, Symbol, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
 
 
+
+```
+
+Search GOI and Visualize
+```{r}
+
+# goi = gene of interest
+goi = c("MAP2", "HES2") # Add gene symbols here
+
+melt.table = dplyr::filter(hm.table, Symbol %in% goi) %>% dplyr::select(-FDR) %>% melt()
+
+ggplot(melt.table, aes(x=variable, y=as.numeric(value), color=Symbol)) +
+                        geom_line()
+                        geom_line(aes(group=factor(Symbol))) + 
+                        geom_point(aes(group=factor(Symbol))) + 
+                        ylab("Log2 Ratio") + xlab ("Time") + theme_light(base_size = 20)
 
 ```
 
@@ -176,7 +195,6 @@ go_table_all$GO.ID = factor(go_table_all$GO.ID,
 m = dplyr::select(go_table_all, GO.ID, Term.x, weightFisher.x, weightFisher.y)
 m$Term.x = make.unique(m$Term.x)
 
-library(reshape2)
 # Rearrange the table for GGplot
 mx = melt(m)
 
