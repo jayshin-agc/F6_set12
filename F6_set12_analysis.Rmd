@@ -1,6 +1,8 @@
 ---
 title: "F6_Set12 EdgeR analysis"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ### Last modified Apr 27, 2020. Author JWS
@@ -11,9 +13,10 @@ This analysis is in part to quickly visualize and assess the dataset.
 
 library(dplyr) 
 library(magrittr)
-library(edgeR)
+
 library(reshape2)
 library(ggplot2)
+
 library(knitr)
 
 ```
@@ -23,29 +26,48 @@ library(knitr)
 ```{r}
 
 # Ensenble gene ID + FANTOM CAT ID is used
-data = read.table("data/F6_set12_count.tsv", header=TRUE, row.names=1)
+data = read.table("local data/F6_set12_count.tsv", header=TRUE, row.names=1)
 
+# File matching CAGE library ID with human readable sample names
 meta = read.csv("meta/F6_set12_meta.csv")
-colnames(data)[match(colnames(data), meta$library_name)] = as.character(meta$perturb_id)
+#meta = dplyr::arrange(meta, perturb_id)
 
+# Match ID and replace with human readable sample names
+# order of match function switched from the original script
+colnames(data)[ match(meta$library_name, colnames(data)) ] = as.character(meta$perturb_id)
+
+# Upload file to match geneID to geneName
 annotations = read.csv("meta/GeneID_to_GeneName.csv", header=TRUE)
 
 
 ```
 
 ### Run EdgeR
-```{r}
+```{r message=FALSE, warning=FALSE}
 
-# Create groups based on header names
+library(edgeR)
+library(pheatmap)
+
+# Create a GROUP based on header names by removing .1, .2, .3
 s = strsplit(names(data), split="\\.")
-group<-sapply(1:length(s), function(X)  s[[X]][1])
+group = sapply(1:length(s), function(X)  s[[X]][1])
 
 # Standard EdgeR commands for normalization and filtering
 my_data = DGEList(counts=data, group=group)
-keep = rowSums(cpm(my_data)) >= 3
+keep = rowSums(cpm(my_data)) >= 3 # can be changed 
 
 my_data = my_data[keep, ]
 my_data = calcNormFactors(my_data)
+
+# Plot MDS for QC
+plotMDS(my_data)
+
+# Plot correlation matrix
+my_data.cor = cor(cpm(my_data), method="pearson")
+pheatmap(my_data.cor)
+
+# Boxplot
+boxplot(log2(cpm(my_data)), las=2, main="Normalized CPM")
 
 # Create design matrix
 design = model.matrix(~0+group)
@@ -76,19 +98,18 @@ summary(decideTests(lrt))
 # Rename
 de.table = lrt$table
 
-# Perform mulitple testing 
+# Perform mulitple testing and add column
 FDR <- p.adjust(de.table$PValue, method="BH") 
 de.table$FDR = FDR
 de.table$geneID = rownames(de.table)
 
+# Match geneID and merge in geneName
 de.table = merge(de.table, annotations, by = "geneID")
 
-# Filter rows (genes) based on a defined criteria
-hm.table = de.table %>% dplyr::filter((logFC.Day08 > 1 | logFC.Day08 < (-1)) | 
-                                      (logFC.Day03 > 1 | logFC.Day03 < (-1)), 
-                                      FDR < 0.05) %>% 
-                                      dplyr::mutate(., logFC.Day00 = 0) %>%
-                                      dplyr::select(geneID, geneName, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
+# Filter rows (genes) based on a defined criteria using dplyr
+hm.table = de.table %>% dplyr::filter(., FDR < 0.01, (logFC.Day08 > 1 | logFC.Day08 < (-1))) %>% 
+                        dplyr::mutate(., logFC.Day00 = 0) %>% 
+                        dplyr::select(geneID, geneName, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
 
 dim(hm.table)
 
@@ -96,15 +117,22 @@ dim(hm.table)
 
 ### Search for gene of interest and Visualize
 ```{r message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
+
+# Optional to use unfiltered data
+#de.table2 = de.table %>% dplyr::mutate(., logFC.Day00 = 0) %>%  dplyr::select(geneID, geneName, logFC.Day00, logFC.Day03, logFC.Day08, FDR)
+
 # goi = gene of interest
-goi = c("MAP2", "HES2") # Add gene symbols here
+goi = c("MAP2", "ASCL1", "NEUROG2", "PAX6", "SREBF2", "SOX11", "SOX2", "HES2") # Add gene symbols here
+
+goi.table = dplyr::filter(hm.table, geneName %in% goi)
 
 melt.table = dplyr::filter(hm.table, geneName %in% goi) %>% dplyr::select(-FDR) %>% melt()
 
 ggplot(melt.table, aes(x=variable, y=as.numeric(value), color=factor(geneName))) +
-                        geom_line(aes(group=factor(geneName))) + 
+                        geom_line(aes(group=factor(geneName)), size=1.2, alpha=0.5) + 
                         geom_point(aes(group=factor(geneName))) + 
-                        ylab("Log2 Ratio") + xlab ("Time") + theme_light(base_size = 20)
+                        ylab("Log2-ratio") + xlab ("Days") + theme_light(base_size = 20) +     scale_color_brewer(palette="Dark2", name="") + 
+  scale_x_discrete( labels=c("00", "03", "08"))
 
 ```
 
